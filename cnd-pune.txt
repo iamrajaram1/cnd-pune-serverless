@@ -1,0 +1,226 @@
+1. Create key pair
+    Key name : Cnd-pune
+	
+***********************************************************************************************************
+
+2. create security group ( to acess the website, we are opening the ports 80 ad 443)
+    SG : cnd-pune-sg
+	Allow Port : SSH (22) ; HTTP (80) ; HTTPS (443) ;
+
+***********************************************************************************************************
+
+3. Launch an EC2 Instance:
+    name : cnd-pune-Instance
+	AMI : Amazon Linux 3
+	Instance Type : t2.micro
+	Key pair : cnd-pune
+	Network Settings : choose the default VPC 
+	Choose the "exisiting SG" - cnd-pune-sg
+    Choose "Metadata version" - V2 Token Only
+
+***********************************************************************************************************
+
+4. Create IAM Custom Managed Policy
+ i. Custom Manage Policy Name : AmazonAllowToManageDeployECSService
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ecs:ExecuteCommand",
+                "ecs:DescribeTasks",
+                "ecs:UpdateService",
+                "iam:PassRole"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+
+***********************************************************************************************************
+
+ ii. Custom Manage Policy Name : AmazonEnableSSMToManageSSHInstance
+
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ssmmessages:CreateControlChannel",
+                "ssmmessages:CreateDataChannel",
+                "ssmmessages:OpenControlChannel",
+                "ssmmessages:OpenDataChannel"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+
+***********************************************************************************************************
+
+ iii. Manage Policy Name : AmazonEC2FullAccess
+
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": "ec2:*",
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": "elasticloadbalancing:*",
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": "cloudwatch:*",
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": "autoscaling:*",
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": "iam:CreateServiceLinkedRole",
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "iam:AWSServiceName": [
+                        "autoscaling.amazonaws.com",
+                        "ec2scheduled.amazonaws.com",
+                        "elasticloadbalancing.amazonaws.com",
+                        "spot.amazonaws.com",
+                        "spotfleet.amazonaws.com",
+                        "transitgateway.amazonaws.com"
+                    ]
+                }
+            }
+        }
+    ]
+}
+
+***********************************************************************************************************
+
+iv. Create an IAM Role for EC2 : AWS-EC2-SSH-Role
+      Choose Policies : AmazonAllowToManageDeployECSService
+	                    AmazonEC2FullAccess
+						
+							
+	Create an IAM Role for ECS : AWS-ECS-SSH-Role
+	   Choose Policies : AmazonEnableSSMToManageSSHInstance
+
+
+***********************************************************************************************************
+
+5. Attach the Role to the EC2 Instance
+    Security --> Modify IAM Role : ECS-SSH-Role
+
+
+***********************************************************************************************************
+
+6. Validate the Access Keys
+  Login to EC2 Instance
+  
+  aws configure list
+  aws ec2 describe-instances --region ap-southeast-1
+
+
+***********************************************************************************************************
+
+7. Install AWS SSM on Linux 
+
+     sudo yum install -y https://s3.amazonaws.com/session-manager-downloads/plugin/latest/linux_64bit/session-manager-plugin.rpm
+	 
+	 Verify the version :
+	 
+	 session-manager-plugin --version  
+	 
+	 If above command doesn't work, then follow below steps :
+	 
+	 whereis session-manager-plugin
+	 /usr/local/bin/session-manager-plugin --version
+     ln -s /usr/local/bin/session-manager-plugin /bin/session-manager-plugin
+     session-manager-plugin --version
+
+678 9
+***********************************************************************************************************
+
+8. Install AWS CLI on Linux :
+
+  curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+  unzip awscliv2.zip
+  sudo ./aws/install
+  
+  aws --version
+  
+  If above command doesn't work, then follow below steps :
+  
+   whereis aws
+   /usr/local/bin/aws --version
+   ln -s /usr/local/bin/aws /bin/aws
+   aws --version
+
+
+remove the aws cli if its already installed :
+sudo rm -rf /usr/local/aws-cli
+rm -rf /usr/bin/aws
+
+
+***********************************************************************************************************
+
+
+7. Create an ECS Cluster 
+    cluster name : cnd-pune-cluster
+	
+
+
+
+***********************************************************************************************************
+
+8. Create a New Task Definition for HTTP
+      Task Defination Name : Apache
+	  Choose Task Role : AWS-ECS-SSH-Role
+	  Operating system family : Linux
+	  container name : httpd
+	  Image : httpd:latest
+	  Task Definition: httpd:1
+
+
+***********************************************************************************************************
+
+9. Create a New Service
+    
+	Service Name : HTTPD
+	choose : VPC
+	Choose : created SG
+	
+***********************************************************************************************************
+
+10. Execute the ECS Commands
+
+
+aws ecs update-service --cluster  cnd-pune-cluster --task-definition httpd:1 --enable-execute-command --service HTTPD --desired-count 1
+
+11. Verify the Apache from browser by hitting the Public IP 
+
+12. Now lets describe tasks
+
+aws ecs describe-tasks --cluster cnd-pune-cluster  -–tasks 474e2647b2e44caaa00d92c6c358d9f8   ("enableExecuteCommand": true)
+
+
+aws ecs execute-command --cluster cnd-pune-cluster --task 474e2647b2e44caaa00d92c6c358d9f8 --container httpd --interactive --command "/bin/bash"
+
+aws ecs update-service --cluster  cndpune --task-definition httpd:4 --enable-execute-command --service httpd --desired-count 1
+
+aws ecs describe-tasks --cluster cndpune  --tasks 334cc9d8c2ca4f629c145e1c434706a8   ("enableExecuteCommand": true)
+
+
+aws ecs execute-command --cluster cndpune --task 334cc9d8c2ca4f629c145e1c434706a8 --container httpd --interactive --command "/bin/sh"
+
+
